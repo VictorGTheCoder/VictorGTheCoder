@@ -1,0 +1,41 @@
+name: Refresh engineering telemetry
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 5 * * *"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/scripts/generate_engineering_metrics.py"
+      - ".github/workflows/engineering-metrics.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out profile repository
+        uses: actions/checkout@v4
+
+      - name: Generate engineering telemetry
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_LOGIN: ${{ github.repository_owner }}
+        run: python .github/scripts/generate_engineering_metrics.py
+
+      - name: Commit refreshed SVG
+        run: |
+          if git diff --quiet -- assets/engineering-metrics.svg; then
+            echo "No metric changes."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets/engineering-metrics.svg
+          git commit -m "chore: refresh engineering telemetry"
+          git push
