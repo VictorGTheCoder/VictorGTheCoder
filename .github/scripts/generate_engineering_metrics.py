@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a recruiter-friendly GitHub engineering telemetry SVG."""
+"""Generate a representative engineering-profile SVG for the GitHub README."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ import html
 import json
 import os
 import urllib.request
-from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -16,7 +15,7 @@ GRAPHQL_URL = "https://api.github.com/graphql"
 OUTPUT = Path("assets/engineering-metrics.svg")
 
 QUERY = r"""
-query EngineeringMetrics($login: String!, $from: DateTime!, $to: DateTime!) {
+query EngineeringProfile($login: String!, $from: DateTime!, $to: DateTime!) {
   user(login: $login) {
     repositories(
       first: 100
@@ -26,25 +25,11 @@ query EngineeringMetrics($login: String!, $from: DateTime!, $to: DateTime!) {
       orderBy: {field: PUSHED_AT, direction: DESC}
     ) {
       totalCount
-      nodes {
-        stargazerCount
-        languages(first: 8, orderBy: {field: SIZE, direction: DESC}) {
-          edges {
-            size
-            node {
-              name
-              color
-            }
-          }
-        }
-      }
     }
     contributionsCollection(from: $from, to: $to) {
-      totalCommitContributions
       totalIssueContributions
       totalPullRequestContributions
       totalPullRequestReviewContributions
-      restrictedContributionsCount
       pullRequestContributionsByRepository(maxRepositories: 100) {
         contributions {
           totalCount
@@ -52,13 +37,6 @@ query EngineeringMetrics($login: String!, $from: DateTime!, $to: DateTime!) {
         repository {
           owner {
             login
-          }
-        }
-      }
-      contributionCalendar {
-        weeks {
-          contributionDays {
-            contributionCount
           }
         }
       }
@@ -76,7 +54,7 @@ def graphql(token: str, variables: dict[str, str]) -> dict:
         headers={
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
-            "User-Agent": "engineering-metrics-svg",
+            "User-Agent": "engineering-profile-svg",
         },
         method="POST",
     )
@@ -88,26 +66,16 @@ def graphql(token: str, variables: dict[str, str]) -> dict:
     return result["data"]["user"]
 
 
-def compact(number: int) -> str:
-    if number >= 1_000_000:
-        return f"{number / 1_000_000:.1f}m".rstrip("0").rstrip(".")
-    if number >= 1_000:
-        return f"{number / 1_000:.1f}k".rstrip("0").rstrip(".")
-    return str(number)
-
-
 def safe(value: object) -> str:
     return html.escape(str(value), quote=True)
 
 
 def render_svg(login: str, user: dict, generated_at: datetime) -> str:
     contributions = user["contributionsCollection"]
-    repos = user["repositories"]
-
-    commits = contributions["totalCommitContributions"]
-    issues = contributions["totalIssueContributions"]
+    public_repos = user["repositories"]["totalCount"]
     prs = contributions["totalPullRequestContributions"]
     reviews = contributions["totalPullRequestReviewContributions"]
+    issues = contributions["totalIssueContributions"]
 
     external_prs = 0
     external_repos = 0
@@ -118,124 +86,102 @@ def render_svg(login: str, user: dict, generated_at: datetime) -> str:
             if count:
                 external_repos += 1
 
-    stars = sum(repo["stargazerCount"] for repo in repos["nodes"])
-
-    language_bytes: dict[str, int] = defaultdict(int)
-    language_colors: dict[str, str] = {}
-    for repo in repos["nodes"]:
-        for edge in repo["languages"]["edges"]:
-            name = edge["node"]["name"]
-            language_bytes[name] += edge["size"]
-            language_colors[name] = edge["node"].get("color") or "#58a6ff"
-
-    top_languages = sorted(
-        language_bytes.items(), key=lambda item: item[1], reverse=True
-    )[:4]
-    language_total = sum(language_bytes.values()) or 1
-
-    weeks = [
-        sum(day["contributionCount"] for day in week["contributionDays"])
-        for week in contributions["contributionCalendar"]["weeks"]
-    ][-52:]
-    if len(weeks) < 52:
-        weeks = [0] * (52 - len(weeks)) + weeks
-    max_week = max(weeks) or 1
-
-    width, height = 900, 470
+    width, height = 900, 560
     metric_x = [32, 242, 452, 662]
     metrics = [
-        ("COMMITS", commits),
-        ("PULL REQUESTS", prs),
-        ("REVIEWS", reviews),
-        ("EXTERNAL PRS", external_prs),
+        ("PUBLIC REPOS", public_repos, "all-time, non-fork"),
+        ("PULL REQUESTS", prs, "last 12 months"),
+        ("CODE REVIEWS", reviews, "last 12 months"),
+        ("EXTERNAL PRS", external_prs, f"{external_repos} external repos"),
+    ]
+
+    domains = [
+        {
+            "x": 32,
+            "y": 240,
+            "title": "SYSTEMS & LOW-LEVEL",
+            "accent": "#f0883e",
+            "stack": "C · C++ · graphics · concurrency · networking",
+            "repos": "42_CPP · 42_miniRT · 42_Cube3D · philosophers",
+        },
+        {
+            "x": 456,
+            "y": 240,
+            "title": "AI / ML / DATA",
+            "accent": "#a371f7",
+            "stack": "Python · ML · neural nets · algorithms",
+            "repos": "IA-Journey · My-Own-AI · ChessIA-OpenGL · Project-Euler",
+        },
+        {
+            "x": 32,
+            "y": 356,
+            "title": "BACKEND / WEB",
+            "accent": "#58a6ff",
+            "stack": "APIs · full-stack · automation · databases",
+            "repos": "Tic-Tac-Toe-Website · API-Twitch · Puppeteer",
+        },
+        {
+            "x": 456,
+            "y": 356,
+            "title": "INFRA / OPEN SOURCE",
+            "accent": "#3fb950",
+            "stack": "Linux · Docker · CI/CD · collaborative engineering",
+            "repos": "inception · aegra · external PRs & reviews",
+        },
     ]
 
     out: list[str] = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}" role="img" aria-labelledby="title desc">',
-        '<title id="title">Engineering telemetry</title>',
-        f'<desc id="desc">GitHub engineering activity for {safe(login)} over the last twelve months.</desc>',
+        '<title id="title">Engineering profile</title>',
+        f'<desc id="desc">Representative engineering profile for {safe(login)} combining public project history with recent GitHub collaboration signals.</desc>',
         "<style>",
         "text{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,'Liberation Mono',monospace}",
         ".muted{fill:#7d8590}.label{fill:#8b949e;font-size:11px;font-weight:600;letter-spacing:1.3px}",
         ".value{fill:#f0f6fc;font-size:28px;font-weight:700}.small{fill:#c9d1d9;font-size:12px}",
+        ".tiny{fill:#7d8590;font-size:10px}.domain{fill:#f0f6fc;font-size:13px;font-weight:700;letter-spacing:.4px}",
         "</style>",
-        '<rect x="1" y="1" width="898" height="468" rx="18" fill="#0d1117" stroke="#30363d"/>',
+        '<rect x="1" y="1" width="898" height="558" rx="18" fill="#0d1117" stroke="#30363d"/>',
         '<circle cx="34" cy="33" r="5" fill="#3fb950"/>',
-        '<text x="50" y="38" class="label">ENGINEERING TELEMETRY / LAST 12 MONTHS</text>',
-        f'<text x="32" y="78" fill="#f0f6fc" font-size="21" font-weight="700">{safe(login)}@github:~$ <tspan fill="#58a6ff">inspect --activity</tspan></text>',
-        '<line x1="32" y1="98" x2="868" y2="98" stroke="#21262d"/>',
+        '<text x="50" y="38" class="label">ENGINEERING PROFILE / BREADTH + RECENT SIGNAL</text>',
+        f'<text x="32" y="78" fill="#f0f6fc" font-size="21" font-weight="700">{safe(login)}@github:~$ <tspan fill="#58a6ff">whoami --engineering</tspan></text>',
+        '<text x="32" y="101" class="small muted">Systems foundations → software engineering → AI/data → open-source collaboration</text>',
+        '<line x1="32" y1="118" x2="868" y2="118" stroke="#21262d"/>',
     ]
 
-    for x, (label, value) in zip(metric_x, metrics):
+    for x, (label, value, note) in zip(metric_x, metrics):
         out.extend(
             [
-                f'<rect x="{x}" y="120" width="188" height="82" rx="12" fill="#161b22" stroke="#30363d"/>',
-                f'<text x="{x + 16}" y="147" class="label">{safe(label)}</text>',
-                f'<text x="{x + 16}" y="181" class="value">{safe(compact(value))}</text>',
+                f'<rect x="{x}" y="138" width="188" height="80" rx="12" fill="#161b22" stroke="#30363d"/>',
+                f'<text x="{x + 16}" y="163" class="label">{safe(label)}</text>',
+                f'<text x="{x + 16}" y="194" class="value">{safe(value)}</text>',
+                f'<text x="{x + 16}" y="209" class="tiny">{safe(note)}</text>',
             ]
         )
 
-    out.append('<text x="32" y="238" class="label">LANGUAGE FOOTPRINT / OWNED PUBLIC REPOS</text>')
-    bar_x, bar_width = 158, 282
-    for index in range(4):
-        y = 267 + index * 31
-        if index < len(top_languages):
-            name, size = top_languages[index]
-            pct = size / language_total
-            color = language_colors[name]
-            fill_width = max(3, round(bar_width * pct))
-            out.extend(
-                [
-                    f'<text x="32" y="{y + 4}" class="small">{safe(name[:15])}</text>',
-                    f'<rect x="{bar_x}" y="{y - 7}" width="{bar_width}" height="10" rx="5" fill="#21262d"/>',
-                    f'<rect x="{bar_x}" y="{y - 7}" width="{fill_width}" height="10" rx="5" fill="{safe(color)}"/>',
-                    f'<text x="452" y="{y + 4}" class="small">{pct * 100:4.1f}%</text>',
-                ]
-            )
-        else:
-            out.extend(
-                [
-                    f'<text x="32" y="{y + 4}" class="small muted">—</text>',
-                    f'<rect x="{bar_x}" y="{y - 7}" width="{bar_width}" height="10" rx="5" fill="#21262d"/>',
-                ]
-            )
-
-    out.extend(
-        [
-            '<text x="540" y="238" class="label">OPEN-SOURCE SIGNAL</text>',
-            '<rect x="540" y="253" width="328" height="125" rx="12" fill="#161b22" stroke="#30363d"/>',
-            '<text x="558" y="281" class="small muted">external repositories</text>',
-            f'<text x="842" y="281" class="small" text-anchor="end">{external_repos}</text>',
-            '<text x="558" y="310" class="small muted">owned public repositories</text>',
-            f'<text x="842" y="310" class="small" text-anchor="end">{repos["totalCount"]}</text>',
-            '<text x="558" y="339" class="small muted">stars on owned repositories</text>',
-            f'<text x="842" y="339" class="small" text-anchor="end">{stars}</text>',
-            '<text x="558" y="368" class="small muted">issues opened / 12m</text>',
-            f'<text x="842" y="368" class="small" text-anchor="end">{issues}</text>',
-            '<text x="32" y="405" class="label">ACTIVITY SIGNAL / 52 WEEKS</text>',
-        ]
-    )
-
-    graph_x, graph_y = 32, 445
-    graph_width, max_height = 836, 26
-    gap = 3
-    bar_w = (graph_width - gap * 51) / 52
-    for i, value in enumerate(weeks):
-        height_px = 3 if value == 0 else max(4, (value / max_week) * max_height)
-        x = graph_x + i * (bar_w + gap)
-        y = graph_y - height_px
-        opacity = 0.35 + 0.65 * (value / max_week)
-        out.append(
-            f'<rect x="{x:.2f}" y="{y:.2f}" width="{bar_w:.2f}" height="{height_px:.2f}" rx="1.5" fill="#2f81f7" opacity="{opacity:.2f}"/>'
+    for domain in domains:
+        x = domain["x"]
+        y = domain["y"]
+        out.extend(
+            [
+                f'<rect x="{x}" y="{y}" width="412" height="98" rx="12" fill="#161b22" stroke="#30363d"/>',
+                f'<rect x="{x}" y="{y}" width="5" height="98" rx="2.5" fill="{domain["accent"]}"/>',
+                f'<text x="{x + 20}" y="{y + 27}" class="domain">{safe(domain["title"])}</text>',
+                f'<text x="{x + 20}" y="{y + 52}" class="small">{safe(domain["stack"])}</text>',
+                f'<text x="{x + 20}" y="{y + 76}" class="tiny">{safe(domain["repos"])}</text>',
+            ]
         )
 
-    timestamp = generated_at.strftime("%Y-%m-%d UTC")
     out.extend(
         [
-            f'<text x="868" y="459" class="muted" font-size="9" text-anchor="end">GraphQL → SVG · refreshed {safe(timestamp)}</text>',
+            '<line x1="32" y1="476" x2="868" y2="476" stroke="#21262d"/>',
+            '<text x="32" y="503" class="label">REPRESENTATIVE STACK</text>',
+            '<text x="32" y="528" class="small">C / C++ · Python · PHP · JavaScript / TypeScript · SQL · Docker · GitHub Actions</text>',
+            f'<text x="868" y="503" class="tiny" text-anchor="end">recent GitHub signal: {issues} issues opened / 12m</text>',
+            f'<text x="868" y="539" class="tiny" text-anchor="end">GraphQL + curated public project history · refreshed {safe(generated_at.strftime("%Y-%m-%d UTC"))}</text>',
             "</svg>",
         ]
     )
+
     return "\n".join(out) + "\n"
 
 
