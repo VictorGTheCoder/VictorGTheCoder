@@ -15,11 +15,11 @@ text{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,'Liberation M
 <line x1="32" y1="118" x2="868" y2="118" stroke="#21262d"/>
 <rect x="32" y="138" width="188" height="80" rx="12" fill="#161b22" stroke="#30363d"/>
 <text x="48" y="163" class="label">PUBLIC REPOS</text>
-<text x="48" y="194" class="value">29</text>
+<text x="48" y="194" class="value">30</text>
 <text x="48" y="209" class="tiny">all-time, non-fork</text>
 <rect x="242" y="138" width="188" height="80" rx="12" fill="#161b22" stroke="#30363d"/>
 <text x="258" y="163" class="label">PULL REQUESTS</text>
-<text x="258" y="194" class="value">57</text>
+<text x="258" y="194" class="value">61</text>
 <text x="258" y="209" class="tiny">last 12 months</text>
 <rect x="452" y="138" width="188" height="80" rx="12" fill="#161b22" stroke="#30363d"/>
 <text x="468" y="163" class="label">CODE REVIEWS</text>
@@ -52,6 +52,6 @@ text{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,'Liberation M
 <line x1="32" y1="476" x2="868" y2="476" stroke="#21262d"/>
 <text x="32" y="503" class="label">REPRESENTATIVE STACK</text>
 <text x="32" y="528" class="small">C / C++ · Python · PHP · JavaScript / TypeScript · SQL · Docker · GitHub Actions</text>
-<text x="868" y="503" class="tiny" text-anchor="end">recent GitHub signal: 51 issues opened / 12m</text>
-<text x="868" y="539" class="tiny" text-anchor="end">GraphQL + curated public project history · refreshed 2026-10-07 UTC</text>
+<text x="868" y="503" class="tiny" text-anchor="end">recent GitHub signal: 96 issues opened / 12m</text>
+<text x="868" y="539" class="tiny" text-anchor="end">GraphQL + curated public project history · refreshed 2026-10-08 UTC</text>
 </svg>
